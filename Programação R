@@ -1,0 +1,265 @@
+# Bioq.Exp.IV
+
+#Bases de dados
+
+apid=read.delim("9606_noISI_Q2.txt",header=T, stringsAsFactors = F)
+
+omni=read.delim("interactions_omni.txt",header=T, stringsAsFactors = F)
+
+dorothea=read.delim("dorothea_AB.txt",header=T, stringsAsFactors = F)
+
+#Extrair a lista de proteínas que interagem fisicamente com uma das subunidades do NFkB e A20
+# NFKBI (P105 -> P50) - P19838
+# RELA (P65) - Q04206
+
+linhasAPID_A1=which(apid$UniprotID_A=="P21580")
+interactores_apid_1=apid$UniprotID_B[linhasAPID_A1]
+
+linhasAPID_A2=which(apid$UniprotID_B=="P21580")
+interactores_apid_2=apid$UniprotID_A[linhasAPID_A2]
+
+interactores_apid=union(interactores_apid_1, interactores_apid_2)
+
+
+alvo_omni=which(omni$source=="P21580")
+alvos= omni$target[alvo_omni]
+
+#Extrair a lista de genes que regulam o NFkB
+
+linhas_reguladores_omni_N=which(omni$target=="P19838")
+linhas_reguladores_omni_R=which(omni$target=="Q04206")
+
+reguladores_omni=union(omni$source[linhas_reguladores_omni_N],omni$source[linhas_reguladores_omni_R])
+
+
+linhas_reguladores_dorothea_N=which(dorothea$target=="P19838")
+linhas_reguladores_dorothea_R=which(dorothea$target=="Q04206")
+
+reguladores_dorothea=union(dorothea$source[linhas_reguladores_dorothea_N],dorothea$source[linhas_reguladores_dorothea_R])
+
+reguladores=union(reguladores_omni,reguladores_dorothea)
+
+ai = union(alvos,interactores_apid)
+
+comuns = intersect(reguladores,ai)
+
+
+## HeLa
+helaprot=read.delim("E-PROT-19-query-results.txt",header=T,skip=4,stringsAsFactors = F)
+
+helaprot=helaprot[!is.na(helaprot$HeLa),]
+
+hela_uniprot=mapIds(org.Hs.eg.db,keys=helaprot$Gene.ID,column="UNIPROT",keytype="ENSEMBL")
+
+reguladores_hela=intersect(reguladores,hela_uniprot)
+
+int_apid_hela = intersect(interactores_apid,hela_uniprot)
+alv_omni_hela = intersect(alvos,hela_uniprot)
+
+ai_hela=intersect(ai,hela_uniprot)
+
+comuns_hela = intersect(comuns, hela_uniprot)
+
+#Testes hipergeométricos
+reg_int = intersect(reguladores_hela,int_apid_hela) 
+reg_alv = intersect (reguladores_hela,alv_omni_hela)
+alv_int = intersect(alv_omni_hela,int_apid_hela)
+
+# Definir o universo
+todos_apid=union(apid$UniprotID_A,apid$UniprotID_B)
+todos_omni=union(omni$source,omni$target)
+todos_dorothea=union(dorothea$source,dorothea$target)
+todos=union(todos_apid,union(todos_omni,todos_dorothea))
+
+uniao_hela = union(todos,hela_uniprot) 
+#Definir o tamanho de cada coisa
+t=length(uniao_hela)
+a=length(alv_omni_hela)
+r=length(reguladores_hela)
+i=length(int_apid_hela)
+a_i=length(alv_int)
+a_r=length(reg_alv)
+r_i=length(reg_int)
+
+#Fazer os testes hipergeométricos
+#phyper é o teste hipergeométrico em si
+
+p_a_i=phyper(a_i-1,a,t-a,i,lower.tail=F)
+p_a_r=phyper(a_r-1,a,t-a,r,lower.tail=F)
+p_r_i=phyper(r_i-1,r,t-r,i,lower.tail=F)
+
+#Os valores são extremamente baixos, pelo que a probabilidade de ao acaso de ter proteínas em comum é muito baixa
+
+
+
+#Interatores e alvos de A20 sem os comuns entre os 2 data sets
+nao_comunsA20_hela = setdiff(ai_hela,comuns_hela)
+nao_comunsNFKB_hela = setdiff(reguladores_hela, comuns_hela)
+
+
+##Enriquecimento NF-kB
+bp_ciclos=enrichGO(reguladores_hela,OrgDb=org.Hs.eg.db, keyType="UNIPROT",ont="BP",pvalueCutoff = 0.05, pAdjustMethod = "BH", universe=hela_uniprot, minGSSize = 10, maxGSSize=500, readable = T)
+bp_ciclos_tab_NFKB=as.data.frame(bp_ciclos)
+to_drop=bp_ciclos_tab_NFKB$ID[bp_ciclos_tab_NFKB$Count<5]
+bp_ciclos=dropGO(bp_ciclos,term=to_drop)
+bp_ciclos_tab_NFKB=as.data.frame(bp_ciclos)
+
+bp_ciclos_simp_NFKB=simplify(bp_ciclos,cutoff=0.5)
+bp_ciclos_simp_tab_NFKB=as.data.frame(bp_ciclos_simp_NFKB)
+
+BiocManager::install("DOSE")
+install.packages("dplyr")
+
+library(DOSE)
+library(dplyr)
+
+
+bp_ciclos_simp_NFKB =mutate(bp_ciclos_simp_NFKB,FoldEnrichment = parse_ratio(bp_ciclos_simp_tab_NFKB$GeneRatio) / parse_ratio(bp_ciclos_simp_tab_NFKB$BgRatio))
+
+bp_ciclos_simp_tab_NFKB=as.data.frame(bp_ciclos_simp_NFKB)
+
+# Enriquecimento A20
+
+bp_ciclos_A20=enrichGO(ai_hela,OrgDb=org.Hs.eg.db, keyType="UNIPROT",ont="BP",pvalueCutoff = 0.05, pAdjustMethod = "BH", universe=hela_uniprot, minGSSize = 10, maxGSSize=500, readable = T)
+bp_ciclos_tab_A20 =as.data.frame(bp_ciclos_A20)
+to_drop=bp_ciclos_tab_A20$ID[bp_ciclos_tab_A20$Count<5]
+bp_ciclos_A20=dropGO(bp_ciclos_A20,term=to_drop)
+bp_ciclos_tab_A20=as.data.frame(bp_ciclos_A20)
+
+bp_ciclos_simp_A20=simplify(bp_ciclos_A20,cutoff=0.5)
+bp_ciclos_simp_tab_A20=as.data.frame(bp_ciclos_simp_A20)
+
+BiocManager::install("DOSE")
+install.packages("dplyr")
+
+library(DOSE)
+library(dplyr)
+
+
+bp_ciclos_simp_A20 =mutate(bp_ciclos_simp_A20,FoldEnrichment = parse_ratio(bp_ciclos_simp_tab_A20$GeneRatio) / parse_ratio(bp_ciclos_simp_tab_A20$BgRatio))
+
+bp_ciclos_simp_tab_A20=as.data.frame(bp_ciclos_simp_A20)
+
+#diferentes
+ai_n=setdiff(ai,reguladores)
+
+#Enriquecimento Comuns
+bp_ciclos_co=enrichGO(comuns_hela,OrgDb=org.Hs.eg.db, keyType="UNIPROT",ont="BP",pvalueCutoff = 0.05, pAdjustMethod = "BH", universe=hela_uniprot, minGSSize = 10, maxGSSize=500, readable = T)
+bp_ciclos_tab_co =as.data.frame(bp_ciclos_co)
+to_drop=bp_ciclos_tab_co$ID[bp_ciclos_tab_co$Count<5]
+bp_ciclos_co=dropGO(bp_ciclos_co,term=to_drop)
+bp_ciclos_tab_co=as.data.frame(bp_ciclos_co)
+
+bp_ciclos_simp_co=simplify(bp_ciclos_co,cutoff=0.5)
+bp_ciclos_simp_tab_co=as.data.frame(bp_ciclos_simp_co)
+
+BiocManager::install("DOSE")
+install.packages("dplyr")
+
+library(DOSE)
+library(dplyr)
+
+
+bp_ciclos_simp_co =mutate(bp_ciclos_simp_co,FoldEnrichment = parse_ratio(bp_ciclos_simp_tab_co$GeneRatio) / parse_ratio(bp_ciclos_simp_tab_co$BgRatio))
+
+bp_ciclos_simp_tab_co=as.data.frame(bp_ciclos_simp_co)
+
+#Enriquecimento A20 sem comuns
+bp_ciclos_A20_noco=enrichGO(nao_comunsA20_hela,OrgDb=org.Hs.eg.db, keyType="UNIPROT",ont="BP",pvalueCutoff = 0.05, pAdjustMethod = "BH", universe=hela_uniprot, minGSSize = 10, maxGSSize=500, readable = T)
+bp_ciclos_tab_A20_noco =as.data.frame(bp_ciclos_A20_noco)
+to_drop=bp_ciclos_tab_A20_noco$ID[bp_ciclos_tab_A20_noco$Count<5]
+bp_ciclos_A20_noco=dropGO(bp_ciclos_A20_noco,term=to_drop)
+bp_ciclos_tab_A20_noco=as.data.frame(bp_ciclos_A20_noco)
+
+bp_ciclos_simp_A20_noco=simplify(bp_ciclos_A20_noco,cutoff=0.5)
+bp_ciclos_simp_tab_A20_noco=as.data.frame(bp_ciclos_simp_A20_noco)
+
+BiocManager::install("DOSE")
+install.packages("dplyr")
+
+library(DOSE)
+library(dplyr)
+
+
+bp_ciclos_simp_A20_noco =mutate(bp_ciclos_simp_A20_noco,FoldEnrichment = parse_ratio(bp_ciclos_simp_tab_A20_noco$GeneRatio) / parse_ratio(bp_ciclos_simp_tab_A20_noco$BgRatio))
+
+bp_ciclos_simp_tab_A20_noco=as.data.frame(bp_ciclos_simp_A20_noco)
+
+#Enriquecimento NF-kB sem comuns
+bp_ciclos_NFKB_noco=enrichGO(nao_comunsNFKB_hela,OrgDb=org.Hs.eg.db, keyType="UNIPROT",ont="BP",pvalueCutoff = 0.05, pAdjustMethod = "BH", universe=hela_uniprot, minGSSize = 10, maxGSSize=500, readable = T)
+bp_ciclos_tab_NFKB_noco =as.data.frame(bp_ciclos_NFKB_noco)
+to_drop=bp_ciclos_tab_NFKB_noco$ID[bp_ciclos_tab_NFKB_noco$Count<5]
+bp_ciclos_NFKB_noco=dropGO(bp_ciclos_NFKB_noco,term=to_drop)
+bp_ciclos_tab_NFKB_noco=as.data.frame(bp_ciclos_NFKB_noco)
+
+bp_ciclos_simp_NFKB_noco=simplify(bp_ciclos_NFKB_noco,cutoff=0.5)
+bp_ciclos_simp_tab_NFKB_noco=as.data.frame(bp_ciclos_simp_NFKB_noco)
+
+BiocManager::install("DOSE")
+install.packages("dplyr")
+
+library(DOSE)
+library(dplyr)
+
+
+bp_ciclos_simp_NFKB_noco =mutate(bp_ciclos_simp_NFKB_noco,FoldEnrichment = parse_ratio(bp_ciclos_simp_tab_NFKB_noco$GeneRatio) / parse_ratio(bp_ciclos_simp_tab_NFKB_noco$BgRatio))
+
+bp_ciclos_simp_tab_NFKB_noco=as.data.frame(bp_ciclos_simp_NFKB_noco)
+
+
+#Dotplot A20
+dotplot(bp_ciclos_simp_A20, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=15,orderBy="Count")
+
+bp_ciclos_simp_tab2=bp_ciclos_simp_tab2[order(bp_ciclos_simp_tab2$FoldEnrichment,decreasing=T),]
+top2plot=bp_ciclos_simp_tab2$Description[1:10]
+
+dotplot(bp_ciclos_simp2, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=top2plot,orderBy="FoldEnrichment")
+
+
+
+
+#Dotplot A20 sem comuns
+dotplot(bp_ciclos_simp_A20_noco, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=15,orderBy="FoldEnrichment")
+
+bp_ciclos_simp_A20_noco=bp_ciclos_simp_A20_noco[order(bp_ciclos_simp_tab_A20_noco$FoldEnrichment,decreasing=T),]
+top2plot=bp_ciclos_simp_tab_A20_noco$Description[1:10]
+
+dotplot(bp_ciclos_simp_A20_noco, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=top2plot,orderBy="FoldEnrichment")
+
+#Dotplot NFKB sem comuns
+
+dotplot(bp_ciclos_simp_NFKB_noco, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=15,orderBy="FoldEnrichment")
+
+bp_ciclos_simp_tab_NFKB_noco=bp_ciclos_simp_tab_NFKB_noco[order(bp_ciclos_simp_tab_NFKB_noco$FoldEnrichment,decreasing=T),]
+top2plot=bp_ciclos_simp_tab_NFKB_noco$Description[1:10]
+
+dotplot(bp_ciclos_simp_NFKB_noco, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=top2plot,orderBy="FoldEnrichment")
+
+
+#Dotplot comuns
+dotplot(bp_ciclos_simp_co, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=7,orderBy="Count")
+
+bp_ciclos_simp_tab2=bp_ciclos_simp_tab2[order(bp_ciclos_simp_tab2$FoldEnrichment,decreasing=T),]
+top2plot=bp_ciclos_simp_tab2$Description[1:10]
+
+dotplot(bp_ciclos_simp2, x="FoldEnrichment",color="p.adjust",size="Count",showCategory=top2plot,orderBy="FoldEnrichment")
+
+
+#Extrair valores ID GO sem o simplify
+
+valor_A20_coluna = bp_ciclos_A20_noco$ID
+valor_NFKB_coluna = bp_ciclos_NFKB_noco$ID
+
+#Número dos comuns
+valores_comuns = length(intersect(valor_A20_coluna,valor_NFKB_coluna))
+#Número total de valores únicos
+valores_unicos = length(valor_A20_coluna)
+#Percentagem total
+percentagem = (valores_comuns/valores_unicos)*100
+
+#Extrair valores ID GO com o simplify
+
+valor_A20_coluna_simp = bp_ciclos_simp_tab_A20_noco$ID
+valor_NFKB_coluna_simp = bp_ciclos_simp_tab_NFKB_noco$ID
+
+comuns = intersect(valor_A20_coluna_simp,valor_NFKB_coluna_simp)
