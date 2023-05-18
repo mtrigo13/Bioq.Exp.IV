@@ -1,5 +1,5 @@
 # Bioq.Exp.IV
-#2
+
 #Bases de dados
 
 apid=read.delim("9606_noISI_Q2.txt",header=T, stringsAsFactors = F)
