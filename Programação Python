@@ -1,0 +1,31 @@
+!pip install matplotlib_venn
+from matplotlib_venn import venn2, venn2_circles
+import matplotlib.pyplot as plt
+
+A20_targets_common = ["Q8NFZ5","Q9Y6K9","P21580","Q9Y4K3","Q8IUC6","P61981","Q9H4A3","Q14520","P42224","Q13283","Q13137","Q9H6S1"
+,"Q9UHD2","Q9HD40","Q96CV9","P19438","P50443","Q9Y508","Q9Y4X5","Q9ULP9","Q9H3F6","Q96G74","Q96BJ3","Q96A37"
+,"Q8TBC3","P12931","Q96B67","P31946","Q8IVM0","Q9C040","Q9UBS8","Q9NVW2","O75382","Q9BZR9","Q9C035","P27348"
+,"P42345","O95863","Q96T11","Q8TB45","P49841","P17676","P17858","Q86VP1","Q9Y3C5","O14920","Q13158","Q15628"
+,"Q13490","P36406","Q99683","Q14161","Q8IYW5","O00220","Q8WXW3"]
+
+NFkB_regulators_common = ["O15111","P41279","P20749","Q92793","O14920","P10599","P25963","P17612","Q09472","Q04206","O15379","O75582"
+,"Q05513","Q9UHD2","O43318","Q96FX8","P62877","P49841","Q8NFZ5","Q9Y6K9","Q99933","P38398","P42574","Q8N6T7"
+,"Q15672","O75676","Q08117","Q68CZ1","Q96L73","Q9Y2K7","P42224","Q13547","P11309","P51812","Q13526","P28482"
+,"Q92831","P19784","P24723","O94806","Q00534","Q96RU7","Q16566","P21675","P14921","P41162","P01100","P23769"
+,"P23771","Q06330","Q01196","P08047"]
+
+# Create the Venn diagram
+
+venn = venn2([set(A20_targets_common), set(NFkB_regulators_common)], set_labels=('A20', 'NF-kB'))
+venn2_circles(subsets=(49, 46, 6), linewidth=2)
+
+# Customize the Venn diagram
+for text in venn.set_labels:
+     text.set_fontsize(30);
+
+for text in venn.subset_labels:
+    text.set_fontsize(30)
+
+# Display the Venn diagram
+
+plt.show()
